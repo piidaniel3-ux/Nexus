@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NEXUS — Module</title>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600&family=DM+Mono:wght@300;400&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/css/global.css">
+</head>
+<body>
+<div id="cursor"></div><div id="cursor-ring"></div>
+<nav id="navbar" class="scrolled">
+  <a href="/" class="nav-logo">NEX<span>US</span></a>
+  <ul class="nav-links"><li><a href="/dashboard">Mon espace</a></li></ul>
+  <div class="nav-auth" id="navAuth"></div>
+</nav>
+<div class="module-page">
+  <div id="modulePageContent"><div style="text-align:center;padding:80px 0;color:var(--muted);">Chargement...</div></div>
+</div>
+<footer>
+  <div class="footer-copy">© 2025 NEXUS Formations</div>
+  <div class="footer-links"><a href="/dashboard">Mon espace</a><a href="/formations.html">Catalogue</a></div>
+</footer>
+<script src="/js/global.js"></script>
+<script>
+const token=getToken();
+if(!token)window.location.href='/login.html';
+const params=new URLSearchParams(location.search);
+const formationId=params.get('f');
+const moduleId=parseInt(params.get('m'));
+let formationData=null;
+
+async function loadModule(){
+  if(!formationId||!moduleId){window.location.href='/dashboard';return;}
+  try{
+    const [fRes,cRes]=await Promise.all([
+      fetch('/api/formations/'+formationId,{headers:{Authorization:'Bearer '+token}}),
+      fetch(`/api/content/${formationId}/${moduleId}`,{headers:{Authorization:'Bearer '+token}})
+    ]);
+    formationData=await fRes.json();
+    if(!fRes.ok){window.location.href='/dashboard';return;}
+    if(!cRes.ok){renderNoContent();return;}
+    const contentData=await cRes.json();
+    renderModule(contentData);
+  }catch(e){console.error(e);renderNoContent();}
+}
+
+function renderModule(data){
+  const prevModule=formationData.modules.find(m=>m.id===moduleId-1);
+  const nextModule=formationData.modules.find(m=>m.id===moduleId+1);
+  let html=`
+    <div class="module-breadcrumb">
+      <a href="/dashboard">Mon espace</a><span>→</span>
+      <a href="/dashboard">${formationData.titre}</a><span>→</span>Module ${moduleId}
+    </div>
+    <div class="module-header">
+      <div class="module-tag">Module ${String(moduleId).padStart(2,'0')} — ${formationData.categorie}</div>
+      <h1 class="module-h1">${data.module}</h1>
+      <div class="module-meta">
+        <span class="module-duree-tag">⏱ ${data.duree}</span>
+        <button style="padding:10px 24px;border:1px solid var(--gold);color:var(--gold);background:transparent;font-family:'DM Mono',monospace;font-size:10px;letter-spacing:.2em;text-transform:uppercase;cursor:none;transition:all .3s" onclick="window.print()" onmouseover="this.style.background='var(--gold)';this.style.color='#000'" onmouseout="this.style.background='transparent';this.style.color='var(--gold)'">⬇ Télécharger PDF</button>
+      </div>
+    </div>
+    <div id="moduleBody">`;
+  data.contenu.forEach(s=>html+=renderSection(s));
+  html+=`</div>`;
+  html+=`<div class="module-nav">`;
+  if(prevModule&&!prevModule.verrouille){
+    html+=`<a href="/module?f=${formationId}&m=${prevModule.id}"><span>←</span><div><div class="nav-label">Module précédent</div><div class="nav-titre">${prevModule.titre}</div></div></a>`;
+  }else html+=`<div></div>`;
+  if(nextModule){
+    if(!nextModule.verrouille){
+      html+=`<a href="/module?f=${formationId}&m=${nextModule.id}"><div style="text-align:right"><div class="nav-label">Module suivant</div><div class="nav-titre">${nextModule.titre}</div></div><span>→</span></a>`;
+    }else{
+      html+=`<a href="/formations.html" style="opacity:.5"><div style="text-align:right"><div class="nav-label">🔒 Débloquer</div><div class="nav-titre">${nextModule.titre}</div></div><span>→</span></a>`;
+    }
+  }else html+=`<div></div>`;
+  html+=`</div>`;
+  document.getElementById('modulePageContent').innerHTML=html;
+  document.title=`NEXUS — ${data.module}`;
+}
+
+function renderSection(s){
+  switch(s.type){
+    case 'intro': return `<p class="content-intro">${s.texte}</p>`;
+    case 'titre': return `<h2 class="content-titre">${s.texte}</h2>`;
+    case 'liste': return `<ul class="content-liste">${s.items.map(i=>`<li>${i}</li>`).join('')}</ul>`;
+    case 'etapes': return `<ol class="content-etapes">${s.items.map(i=>`<li>${i}</li>`).join('')}</ol>`;
+    case 'carte': return `<div class="content-carte"><div class="content-carte-titre">${s.titre}</div><ul>${s.items.map(i=>`<li>${i}</li>`).join('')}</ul></div>`;
+    case 'tableau': return `<div style="overflow-x:auto;margin-bottom:32px;"><table class="content-tableau"><thead><tr>${s.colonnes.map(c=>`<th>${c}</th>`).join('')}</tr></thead><tbody>${s.lignes.map(r=>`<tr>${r.map(c=>`<td>${c}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
+    case 'exercice': return `<div class="content-exercice"><div class="content-exercice-titre">✏️ Exercice pratique — ${s.texte}</div><ul>${s.items.map(i=>`<li>${i}</li>`).join('')}</ul></div>`;
+    default: return '';
+  }
+}
+
+function renderNoContent(){
+  document.getElementById('modulePageContent').innerHTML=`
+    <div style="text-align:center;padding:80px 0;color:var(--muted);">
+      <div style="font-size:48px;margin-bottom:24px;">📋</div>
+      <p style="font-size:16px;margin-bottom:8px;color:var(--white);">Contenu en cours de préparation</p>
+      <p style="font-size:13px;">Ce module sera disponible très prochainement.</p>
+      <a href="/dashboard" style="display:inline-block;margin-top:32px;" class="btn-access">← Retour au dashboard</a>
+    </div>`;
+}
+loadModule();
+</script>
+</body>
+</html>
